@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String?
+  color       String?     // For UI differentiation
+  type        String      @default("time") // "time" for hourly tracking, "day" for full day entries
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  timeEntries TimeEntry[]
+}
+
+model TimeEntry {
+  id          String      @id @default(cuid())
+  description String?
+  hours       Float?      // Optional for day-based entries
+  date        DateTime    // Start date for time entries, or single date for day entries
+  endDate     DateTime?   // End date for multi-day entries (vacation, etc.)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // JIRA fields - only key and billing package needed for invoicing
+  jiraKey           String?  // JIRA issue key (e.g., "PROJ-123")
+  jiraBillingPackage String?  // customfield_10040
+  
+  // Category relation for internal activities
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
