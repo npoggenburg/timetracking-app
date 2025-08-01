@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 're
 import { Search, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { jiraService } from '@/services/jira.service'
+import { jiraClientService } from '@/services/jira-client.service'
 import { JiraTask } from '@/types/jira'
 
 interface JiraSearchProps {
@@ -47,7 +47,7 @@ export const JiraSearch = forwardRef<JiraSearchRef, JiraSearchProps>(({ onTaskSe
 
       setIsLoading(true)
       try {
-        const tasks = await jiraService.searchTasks(query)
+        const tasks = await jiraClientService.searchTasks(query)
         setResults(tasks)
         setShowResults(true)
         setSelectedIndex(-1)
@@ -162,7 +162,7 @@ export const JiraSearch = forwardRef<JiraSearchRef, JiraSearchProps>(({ onTaskSe
                 <div className="text-muted-foreground">{task.summary}</div>
                 {task.billingPackage && (
                   <div className="text-xs text-blue-600 mt-1">
-                    📦 {task.billingPackage}
+                    {task.billingPackage}
                   </div>
                 )}
               </button>

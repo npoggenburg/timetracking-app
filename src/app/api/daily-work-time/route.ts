@@ -5,19 +5,39 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const dateParam = searchParams.get('date');
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
     
-    if (!dateParam) {
-      return NextResponse.json({ error: 'Date parameter is required' }, { status: 400 });
+    if (dateParam) {
+      // Single date query - parse as UTC to match storage format
+      const date = new Date(dateParam + 'T00:00:00.000Z');
+      
+      const dailyWorkTime = await prisma.dailyWorkTime.findUnique({
+        where: { date }
+      });
+
+      return NextResponse.json(dailyWorkTime || null);
+    } else if (startDateParam && endDateParam) {
+      // Date range query - parse as UTC to match storage format
+      const startDate = new Date(startDateParam + 'T00:00:00.000Z');
+      const endDate = new Date(endDateParam + 'T23:59:59.999Z');
+      
+      const dailyWorkTimes = await prisma.dailyWorkTime.findMany({
+        where: {
+          date: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        orderBy: {
+          date: 'asc'
+        }
+      });
+
+      return NextResponse.json(dailyWorkTimes);
+    } else {
+      return NextResponse.json({ error: 'Date parameter or date range (startDate and endDate) is required' }, { status: 400 });
     }
-
-    const date = new Date(dateParam);
-    date.setHours(0, 0, 0, 0);
-    
-    const dailyWorkTime = await prisma.dailyWorkTime.findUnique({
-      where: { date }
-    });
-
-    return NextResponse.json(dailyWorkTime || null);
   } catch (error) {
     console.error('Error fetching daily work time:', error);
     return NextResponse.json(
@@ -39,8 +59,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const parsedDate = new Date(date);
-    parsedDate.setHours(0, 0, 0, 0);
+    // Parse date ensuring consistent format
+    const parsedDate = new Date(date + 'T00:00:00.000Z');
 
     const dailyWorkTime = await prisma.dailyWorkTime.upsert({
       where: { date: parsedDate },

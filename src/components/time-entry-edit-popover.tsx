@@ -173,7 +173,7 @@ export function TimeEntryEditPopover({ entry, isOpen, onClose, onSave, position 
             {entry.jiraKey || entry.category?.name}
           </div>
           {entry.jiraBillingPackage && (
-            <div className="text-blue-600">📦 {entry.jiraBillingPackage}</div>
+            <div className="text-blue-600">{entry.jiraBillingPackage}</div>
           )}
         </div>
 

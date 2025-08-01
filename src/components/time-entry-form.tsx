@@ -187,6 +187,15 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
       setTimeDisplay('')
       setDecimalHours(0)
       setDescription('')
+      
+      // Focus back to the appropriate search field
+      setTimeout(() => {
+        if (entryType === 'jira') {
+          jiraSearchRef.current?.focus()
+        } else {
+          categorySelectorRef.current?.focus()
+        }
+      }, 100) // Small delay to ensure UI updates are complete
     }
     setShowConfirmation(false)
     setPendingSubmission(null)
@@ -215,9 +224,13 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
               setEntryType('jira')
               setSelectedCategory(null)
             }}
-            className="flex-1"
+            className={`flex-1 ${
+              entryType === 'jira' 
+                ? 'bg-blue-600 hover:bg-blue-700 border-blue-600 text-white' 
+                : 'border-blue-300 text-blue-600 hover:bg-blue-50 hover:border-blue-400'
+            }`}
           >
-            🎫 JIRA Task
+            JIRA Task
           </Button>
           <Button
             type="button"
@@ -226,9 +239,13 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
               setEntryType('category')
               setSelectedJiraTask(null)
             }}
-            className="flex-1"
+            className={`flex-1 ${
+              entryType === 'category' 
+                ? 'bg-orange-600 hover:bg-orange-700 border-orange-600 text-white' 
+                : 'border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400'
+            }`}
           >
-            📋 Internal Activity
+            Internal Activity
           </Button>
         </div>
       </div>
@@ -239,12 +256,12 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
           <Label htmlFor="jira-search">JIRA Task</Label>
           <JiraSearch ref={jiraSearchRef} onTaskSelect={handleJiraTaskSelect} />
           {selectedJiraTask && (
-            <div className="rounded-md border border-border bg-muted/50 p-3">
+            <div className="rounded-md border border-blue-200 bg-blue-50/50 p-3">
               <div className="font-medium">{selectedJiraTask.key}</div>
               <div className="text-sm text-muted-foreground">{selectedJiraTask.summary}</div>
               {selectedJiraTask.billingPackage && (
                 <div className="text-xs text-blue-600 mt-1">
-                  📦 {selectedJiraTask.billingPackage}
+                  {selectedJiraTask.billingPackage}
                 </div>
               )}
             </div>
@@ -259,6 +276,7 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
           onCategorySelect={handleCategorySelect}
           selectedCategory={selectedCategory}
           onCategoriesLoaded={handleCategoriesLoaded}
+          theme="orange"
         />
       )}
 
@@ -319,7 +337,11 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
         <Button
           type="submit"
           disabled={isLoading}
-          className="flex-1"
+          className={`flex-1 ${
+            entryType === 'jira'
+              ? 'bg-blue-600 hover:bg-blue-700 border-blue-600 text-white disabled:bg-blue-300'
+              : 'bg-orange-600 hover:bg-orange-700 border-orange-600 text-white disabled:bg-orange-300'
+          }`}
         >
           {isLoading ? 'Adding...' : 'Add Time Entry'}
         </Button>

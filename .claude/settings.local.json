@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(gh:*)",
+      "Bash(git push:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(node test-jira.js)",
+      "Bash(rm:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npm run lint)",
+      "Bash(npx prisma db seed:*)",
+      "Bash(npx prisma:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(mkdir:*)"
+    ],
+    "deny": []
+  }
+}

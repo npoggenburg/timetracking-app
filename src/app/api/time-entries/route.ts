@@ -5,19 +5,34 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const dateFilter = searchParams.get('date')
+    const startDateFilter = searchParams.get('startDate')
+    const endDateFilter = searchParams.get('endDate')
     
     let whereClause = {}
     
     if (dateFilter) {
-      // Filter entries for a specific date
-      const startDate = new Date(dateFilter)
-      const endDate = new Date(startDate)
-      endDate.setDate(endDate.getDate() + 1)
+      // Filter entries for a specific date - parse as local date to avoid timezone issues
+      const [year, month, day] = dateFilter.split('-').map(Number);
+      const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
       
       whereClause = {
         date: {
           gte: startDate,
-          lt: endDate,
+          lte: endDate,
+        },
+      }
+    } else if (startDateFilter && endDateFilter) {
+      // Filter entries for a date range - parse as local dates to avoid timezone issues  
+      const [startYear, startMonth, startDay] = startDateFilter.split('-').map(Number);
+      const [endYear, endMonth, endDay] = endDateFilter.split('-').map(Number);
+      const startDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+      const endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+      
+      whereClause = {
+        date: {
+          gte: startDate,
+          lte: endDate,
         },
       }
     }
@@ -163,6 +178,27 @@ export async function POST(request: NextRequest) {
     console.error('Error creating time entry:', error)
     return NextResponse.json(
       { error: 'Failed to create time entry' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE() {
+  try {
+    // Delete all time entries from the database
+    const result = await prisma.timeEntry.deleteMany({})
+
+    return NextResponse.json(
+      { 
+        message: `Successfully deleted ${result.count} time entries`,
+        count: result.count 
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error('Error clearing time entries:', error)
+    return NextResponse.json(
+      { error: 'Failed to clear time entries' },
       { status: 500 }
     )
   }

@@ -1,64 +1,23 @@
 import { JiraTask, JiraSearchResponse, JiraIssue } from '@/types/jira'
 
 export class JiraService {
-  // Mock data for development
-  private mockTasks: JiraIssue[] = [
-    {
-      id: '10001',
-      key: 'PROJ-123',
-      fields: {
-        summary: 'Implement user authentication system',
-        description: 'Create login/logout functionality with JWT tokens',
-        status: { name: 'In Progress' },
-        assignee: { displayName: 'John Doe', emailAddress: 'john@company.com' },
-        customfield_10040: 'Enterprise Package'
-      }
-    },
-    {
-      id: '10002',
-      key: 'PROJ-124',
-      fields: {
-        summary: 'Fix database connection issues',
-        description: 'Resolve timeout errors in production database',
-        status: { name: 'Open' },
-        assignee: { displayName: 'Jane Smith', emailAddress: 'jane@company.com' },
-        customfield_10040: 'Basic Package'
-      }
-    },
-    {
-      id: '10003',
-      key: 'PROJ-125',
-      fields: {
-        summary: 'Update API documentation',
-        description: 'Add examples and improve clarity of endpoints',
-        status: { name: 'Done' },
-        assignee: { displayName: 'Bob Wilson', emailAddress: 'bob@company.com' },
-        customfield_10040: 'Premium Package'
-      }
-    },
-    {
-      id: '10004',
-      key: 'DEV-456',
-      fields: {
-        summary: 'Performance optimization for dashboard',
-        description: 'Improve loading times by implementing caching',
-        status: { name: 'Code Review' },
-        assignee: { displayName: 'Alice Brown', emailAddress: 'alice@company.com' },
-        customfield_10040: 'Enterprise Package'
-      }
-    },
-    {
-      id: '10005',
-      key: 'BUG-789',
-      fields: {
-        summary: 'Memory leak in background service',
-        description: 'Fix memory accumulation in long-running processes',
-        status: { name: 'In Progress' },
-        assignee: { displayName: 'Charlie Green', emailAddress: 'charlie@company.com' },
-        customfield_10040: 'Basic Package'
-      }
+  private baseUrl: string
+  private email: string
+  private apiToken: string
+
+  constructor() {
+    this.baseUrl = process.env.JIRA_BASE_URL || ''
+    this.email = process.env.JIRA_EMAIL || ''
+    this.apiToken = process.env.JIRA_API_TOKEN || ''
+
+    if (!this.baseUrl || !this.email || !this.apiToken) {
+      console.warn('JIRA credentials not found in environment variables')
     }
-  ]
+  }
+
+  private getAuthHeader(): string {
+    return `Basic ${btoa(`${this.email}:${this.apiToken}`)}`
+  }
 
   /**
    * Search for JIRA tasks by key or text
@@ -66,21 +25,34 @@ export class JiraService {
    * @returns Promise<JiraTask[]>
    */
   async searchTasks(query: string): Promise<JiraTask[]> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 300))
-
     if (!query.trim()) {
       return []
     }
 
-    // Filter mock tasks based on query
-    const filteredTasks = this.mockTasks.filter(issue => 
-      issue.key.toLowerCase().includes(query.toLowerCase()) ||
-      issue.fields.summary.toLowerCase().includes(query.toLowerCase())
-    )
+    try {
+      // Build JQL query - search within MFLP project for the query
+      const jql = encodeURIComponent(`project IN (TN,CON,MFLP) AND (key="${query.toUpperCase()}" OR summary~"${query}" OR key~"${query.toUpperCase()}")`)
+      const url = `${this.baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=id,key,summary,description,customfield_10064`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': this.getAuthHeader(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
 
-    // Convert to our internal format
-    return filteredTasks.map(this.convertJiraIssueToTask)
+      if (!response.ok) {
+        console.error('JIRA API Error:', response.status, response.statusText)
+        return []
+      }
+
+      const data: JiraSearchResponse = await response.json()
+      return data.issues.map(this.convertJiraIssueToTask)
+    } catch (error) {
+      console.error('Error searching JIRA tasks:', error)
+      return []
+    }
   }
 
   /**
@@ -89,18 +61,31 @@ export class JiraService {
    * @returns Promise<JiraTask | null>
    */
   async getTaskByKey(key: string): Promise<JiraTask | null> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 200))
+    try {
+      const url = `${this.baseUrl}/rest/api/3/issue/${key}?fields=id,key,summary,description,customfield_10064`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': this.getAuthHeader(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
 
-    const issue = this.mockTasks.find(task => 
-      task.key.toLowerCase() === key.toLowerCase()
-    )
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null
+        }
+        console.error('JIRA API Error:', response.status, response.statusText)
+        return null
+      }
 
-    if (!issue) {
+      const issue: JiraIssue = await response.json()
+      return this.convertJiraIssueToTask(issue)
+    } catch (error) {
+      console.error('Error fetching JIRA task:', error)
       return null
     }
-
-    return this.convertJiraIssueToTask(issue)
   }
 
   /**
@@ -109,15 +94,41 @@ export class JiraService {
    * @returns JiraTask
    */
   private convertJiraIssueToTask(issue: JiraIssue): JiraTask {
+    // Handle different description formats (API v2 vs v3)
+    let description = issue.fields.description
+    if (description && typeof description === 'object' && description.content) {
+      // API v3 format - extract text from rich content
+      description = JiraService.extractTextFromRichContent(description)
+    }
+
     return {
       id: issue.id,
       key: issue.key,
       summary: issue.fields.summary,
-      description: issue.fields.description,
+      description: description,
       status: issue.fields.status?.name,
       assignee: issue.fields.assignee?.displayName,
-      billingPackage: issue.fields.customfield_10040
+      billingPackage: issue.fields.customfield_10064?.value || null
     }
+  }
+
+  /**
+   * Extract plain text from JIRA's rich content format (API v3)
+   */
+  private static extractTextFromRichContent(content: any): string {
+    if (!content || !content.content) return ''
+
+    let text = ''
+    content.content.forEach((block: any) => {
+      if (block.content) {
+        block.content.forEach((inline: any) => {
+          if (inline.type === 'text' && inline.text) {
+            text += inline.text
+          }
+        })
+      }
+    })
+    return text
   }
 
   /**

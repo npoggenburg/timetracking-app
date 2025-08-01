@@ -5,7 +5,7 @@ export interface JiraTask {
   description?: string
   status?: string
   assignee?: string
-  billingPackage?: string // customfield_10040
+  billingPackage?: string // customfield_10064
 }
 
 export interface JiraSearchResponse {
@@ -26,7 +26,7 @@ export interface JiraIssue {
       displayName: string
       emailAddress: string
     }
-    customfield_10040?: string // billing package
+    customfield_10064?: string // billing package
   }
 }
 
