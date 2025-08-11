@@ -49,6 +49,7 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
   const [description, setDescription] = useState<string>('')
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [pendingSubmission, setPendingSubmission] = useState<TimeEntryData | null>(null)
+  const [isMac, setIsMac] = useState(false)
 
   // Refs for focus management
   const jiraSearchRef = useRef<JiraSearchRef>(null)
@@ -121,6 +122,12 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
     setTimeDisplay(displayValue)
     setDecimalHours(decimalValue)
   }
+
+  // Detect if user is on Mac
+  useEffect(() => {
+    const platform = navigator.platform || navigator.userAgent
+    setIsMac(/Mac|iPhone|iPod|iPad/i.test(platform))
+  }, [])
 
   // Focus management
   useEffect(() => {
@@ -209,7 +216,7 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">Time Entry Type</Label>
           <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-            Press Alt+M to switch
+            Press {isMac ? 'Option' : 'Alt'}+M to switch
           </span>
         </div>
         <div className="flex gap-2">
