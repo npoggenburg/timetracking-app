@@ -50,6 +50,18 @@ interface JiraWorklogEntry {
   }
 }
 
+// Loading component for sections
+const SectionLoading = ({ message }: { message: string }) => (
+  <div className="bg-white border rounded-lg p-8">
+    <div className="flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-3 text-sm text-gray-600">{message}</p>
+      </div>
+    </div>
+  </div>
+)
+
 export default function DailyTimetrackingPage() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
@@ -57,7 +69,9 @@ export default function DailyTimetrackingPage() {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([])
   const [jiraTasksData, setJiraTasksData] = useState<Map<string, JiraTaskWithTracking>>(new Map())
   const [jiraWorklogs, setJiraWorklogs] = useState<JiraWorklogEntry[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingEntries, setIsLoadingEntries] = useState(false)
+  const [isLoadingJiraData, setIsLoadingJiraData] = useState(false)
+  const [isLoadingWorklogs, setIsLoadingWorklogs] = useState(false)
 
   // Format seconds to readable time string
   const formatSeconds = (seconds?: number) => {
@@ -91,9 +105,9 @@ export default function DailyTimetrackingPage() {
 
   // Fetch time entries for the selected date
   const fetchTimeEntries = async () => {
-    setIsLoading(true)
+    // Fetch local time entries
+    setIsLoadingEntries(true)
     try {
-      // Fetch local time entries
       const response = await fetch(`/api/time-entries?date=${selectedDate}`)
       if (response.ok) {
         const data = await response.json()
@@ -104,39 +118,53 @@ export default function DailyTimetrackingPage() {
           .filter((entry: TimeEntry) => entry.jiraKey)
           .map((entry: TimeEntry) => entry.jiraKey))]
         
-        await fetchJiraData(jiraKeys as string[])
+        if (jiraKeys.length > 0) {
+          await fetchJiraData(jiraKeys as string[])
+        }
       }
-      
-      // Fetch JIRA worklogs for the date
+    } catch (error) {
+      console.error('Failed to fetch time entries:', error)
+    } finally {
+      setIsLoadingEntries(false)
+    }
+    
+    // Fetch JIRA worklogs for the date (independently)
+    setIsLoadingWorklogs(true)
+    try {
       const worklogsResponse = await fetch(`/api/jira/worklogs?date=${selectedDate}`)
       if (worklogsResponse.ok) {
         const worklogsData = await worklogsResponse.json()
         setJiraWorklogs(worklogsData)
       }
     } catch (error) {
-      console.error('Failed to fetch time entries:', error)
+      console.error('Failed to fetch JIRA worklogs:', error)
     } finally {
-      setIsLoading(false)
+      setIsLoadingWorklogs(false)
     }
   }
 
   // Fetch JIRA task data with timetracking info
   const fetchJiraData = async (jiraKeys: string[]) => {
+    setIsLoadingJiraData(true)
     const newJiraData = new Map<string, JiraTaskWithTracking>()
     
-    for (const key of jiraKeys) {
-      try {
-        const response = await fetch(`/api/jira/task/${key}`)
-        if (response.ok) {
-          const task = await response.json()
-          newJiraData.set(key, task)
+    try {
+      for (const key of jiraKeys) {
+        try {
+          const response = await fetch(`/api/jira/task/${key}`)
+          if (response.ok) {
+            const task = await response.json()
+            newJiraData.set(key, task)
+          }
+        } catch (error) {
+          console.error(`Failed to fetch JIRA task ${key}:`, error)
         }
-      } catch (error) {
-        console.error(`Failed to fetch JIRA task ${key}:`, error)
       }
+      
+      setJiraTasksData(newJiraData)
+    } finally {
+      setIsLoadingJiraData(false)
     }
-    
-    setJiraTasksData(newJiraData)
   }
 
   // Load entries when date changes
@@ -165,6 +193,8 @@ export default function DailyTimetrackingPage() {
     0
   )
 
+  const isAnyLoading = isLoadingEntries || isLoadingJiraData || isLoadingWorklogs
+
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="space-y-6">
@@ -179,8 +209,8 @@ export default function DailyTimetrackingPage() {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="w-40"
             />
-            <Button onClick={fetchTimeEntries} disabled={isLoading}>
-              {isLoading ? 'Loading...' : 'Refresh'}
+            <Button onClick={fetchTimeEntries} disabled={isAnyLoading}>
+              {isAnyLoading ? 'Loading...' : 'Refresh'}
             </Button>
           </div>
         </div>
@@ -210,7 +240,12 @@ export default function DailyTimetrackingPage() {
         </div>
 
         {/* JIRA Tasks Section */}
-        {jiraEntries.length > 0 && (
+        {isLoadingEntries ? (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-blue-600">Local JIRA Task Entries</h2>
+            <SectionLoading message="Loading local time entries..." />
+          </div>
+        ) : jiraEntries.length > 0 ? (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-blue-600">Local JIRA Task Entries</h2>
             <div className="bg-white border rounded-lg overflow-hidden">
@@ -235,7 +270,11 @@ export default function DailyTimetrackingPage() {
                           {entry.jiraKey}
                         </td>
                         <td className="px-4 py-3 text-gray-700">
-                          {jiraTask?.summary || '-'}
+                          {isLoadingJiraData ? (
+                            <div className="animate-pulse bg-gray-200 h-4 w-32 rounded"></div>
+                          ) : (
+                            jiraTask?.summary || '-'
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-600">
                           {entry.jiraBillingPackage || '-'}
@@ -244,13 +283,25 @@ export default function DailyTimetrackingPage() {
                           {formatHours(entry.hours)}
                         </td>
                         <td className="px-4 py-3 text-right text-purple-600">
-                          {formatSeconds(jiraTask?.timeTracking?.timeSpentSeconds)}
+                          {isLoadingJiraData ? (
+                            <div className="animate-pulse bg-gray-200 h-4 w-16 rounded ml-auto"></div>
+                          ) : (
+                            formatSeconds(jiraTask?.timeTracking?.timeSpentSeconds)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right text-gray-600">
-                          {formatSeconds(jiraTask?.timeTracking?.originalEstimateSeconds)}
+                          {isLoadingJiraData ? (
+                            <div className="animate-pulse bg-gray-200 h-4 w-16 rounded ml-auto"></div>
+                          ) : (
+                            formatSeconds(jiraTask?.timeTracking?.originalEstimateSeconds)
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right text-gray-600">
-                          {formatSeconds(jiraTask?.timeTracking?.remainingEstimateSeconds)}
+                          {isLoadingJiraData ? (
+                            <div className="animate-pulse bg-gray-200 h-4 w-16 rounded ml-auto"></div>
+                          ) : (
+                            formatSeconds(jiraTask?.timeTracking?.remainingEstimateSeconds)
+                          )}
                         </td>
                       </tr>
                     )
@@ -259,10 +310,15 @@ export default function DailyTimetrackingPage() {
               </table>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* JIRA Worklogs Section (from JIRA API) */}
-        {jiraWorklogs.length > 0 && (
+        {isLoadingWorklogs ? (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-purple-600">JIRA Worklogs (from JIRA API)</h2>
+            <SectionLoading message="Loading JIRA worklogs..." />
+          </div>
+        ) : jiraWorklogs.length > 0 ? (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-purple-600">JIRA Worklogs (from JIRA API)</h2>
             <div className="bg-white border rounded-lg overflow-hidden">
@@ -300,51 +356,55 @@ export default function DailyTimetrackingPage() {
               </table>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Internal Activities Section */}
-        {categoryEntries.length > 0 && (
+        {/* Internal Activities Section - shown if there are category entries or still loading */}
+        {(isLoadingEntries || categoryEntries.length > 0) && (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-orange-600">Internal Activities</h2>
-            <div className="bg-white border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-700">Category</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-700">Description</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-700">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categoryEntries.map(entry => (
-                    <tr key={entry.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <span 
-                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium"
-                          style={{
-                            backgroundColor: entry.category?.color ? `${entry.category.color}20` : '#f3f4f6',
-                            color: entry.category?.color || '#374151'
-                          }}
-                        >
-                          {entry.category?.name || 'Unknown'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">
-                        {entry.description || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium">
-                        {entry.category?.type === 'day' ? 'Full Day' : formatHours(entry.hours)}
-                      </td>
+            {isLoadingEntries ? (
+              <SectionLoading message="Loading internal activities..." />
+            ) : (
+              <div className="bg-white border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-medium text-gray-700">Category</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-700">Description</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-700">Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {categoryEntries.map(entry => (
+                      <tr key={entry.id} className="border-b hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <span 
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium"
+                            style={{
+                              backgroundColor: entry.category?.color ? `${entry.category.color}20` : '#f3f4f6',
+                              color: entry.category?.color || '#374151'
+                            }}
+                          >
+                            {entry.category?.name || 'Unknown'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {entry.description || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {entry.category?.type === 'day' ? 'Full Day' : formatHours(entry.hours)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {/* Empty State */}
-        {timeEntries.length === 0 && !isLoading && (
+        {timeEntries.length === 0 && jiraWorklogs.length === 0 && !isAnyLoading && (
           <div className="text-center py-12 bg-gray-50 rounded-lg">
             <p className="text-gray-500">No time entries found for {selectedDate}</p>
           </div>
