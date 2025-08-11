@@ -48,7 +48,7 @@ export function Navigation() {
                             }`}
                         >
                             <BarChart3 className='h-4 w-4' />
-                            Daily Overview
+                            JIRA Task Accounting
                         </Link>
                     </div>
                 </div>

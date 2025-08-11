@@ -12,6 +12,19 @@ import { JiraSearch, JiraSearchRef } from '@/components/jira-search'
 import { CategorySelector, CategorySelectorRef } from '@/components/category-selector'
 import { JiraTask } from '@/types/jira'
 import { roundToNearestQuarterHour } from '@/lib/time-utils'
+import { 
+  TimeEntryFormValidator, 
+  createFormValidator,
+  TimeEntryFormData 
+} from '@/services/form-validation.service'
+import { 
+  NotificationServiceInterface,
+  createNotificationService 
+} from '@/services/notification.service'
+import { 
+  KeyboardServiceInterface,
+  createKeyboardService 
+} from '@/services/keyboard.service'
 
 type EntryType = 'jira' | 'category'
 
@@ -56,37 +69,34 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
   const categorySelectorRef = useRef<CategorySelectorRef>(null)
   const timeInputRef = useRef<TimeInputRef>(null)
 
+  // Services - Dependency Injection
+  const formValidator = useRef<TimeEntryFormValidator>(createFormValidator())
+  const notificationService = useRef<NotificationServiceInterface>(createNotificationService())
+  const keyboardService = useRef<KeyboardServiceInterface>(createKeyboardService())
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (entryType === 'jira' && !selectedJiraTask) {
-      alert('Please select a JIRA task')
-      return
+    // Use validation service instead of inline validation
+    const formData: TimeEntryFormData = {
+      type: entryType,
+      selectedJiraTask,
+      selectedCategory,
+      decimalHours,
+      date,
+      endDate
     }
 
-    if (entryType === 'category' && !selectedCategory) {
-      alert('Please select a category')
-      return
-    }
-
-    // Validate based on category type
-    const isDayBasedCategory = selectedCategory?.type === 'day'
+    const validationResult = formValidator.current.validate(formData)
     
-    if (entryType === 'jira' || !isDayBasedCategory) {
-      // Time-based validation
-      if (decimalHours <= 0) {
-        alert('Please enter valid time')
-        return
-      }
-    } else {
-      // Day-based validation
-      if (!date) {
-        alert('Please select a date')
-        return
-      }
+    if (!validationResult.isValid) {
+      // Show first validation error
+      notificationService.current.showValidationError(validationResult.errors[0])
+      return
     }
 
     // Round hours to nearest 15-minute increment for time-based entries
+    const isDayBasedCategory = selectedCategory?.type === 'day'
     const finalHours = (entryType === 'jira' || !isDayBasedCategory) 
       ? roundToNearestQuarterHour(decimalHours) 
       : undefined
@@ -123,10 +133,10 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
     setDecimalHours(decimalValue)
   }
 
-  // Detect if user is on Mac
+  // Detect if user is on Mac using keyboard service
   useEffect(() => {
-    const platform = navigator.platform || navigator.userAgent
-    setIsMac(/Mac|iPhone|iPod|iPad/i.test(platform))
+    const { isMac } = keyboardService.current.detectPlatform()
+    setIsMac(isMac)
   }, [])
 
   // Focus management

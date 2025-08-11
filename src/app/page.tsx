@@ -6,101 +6,83 @@ import { TimeEntriesSidebar, TimeEntriesSidebarRef } from '@/components/time-ent
 import { ConfirmationModal } from '@/components/ui/confirmation-modal';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
-
-interface TimeEntryData {
-    type: 'jira' | 'category';
-    jiraTask?: any;
-    category?: any;
-    hours: number;
-    date: string;
-    description?: string;
-}
+import { 
+    TimeEntryData, 
+    TimeEntryServiceInterface, 
+    createTimeEntryService 
+} from '@/services/time-entry.service';
+import { 
+    NotificationMessage, 
+    NotificationServiceInterface, 
+    createNotificationService 
+} from '@/services/notification.service';
+import { 
+    KeyboardServiceInterface, 
+    createKeyboardService 
+} from '@/services/keyboard.service';
 
 export default function Home() {
     const [isLoading, setIsLoading] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [message, setMessage] = useState<NotificationMessage | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [showClearConfirmation, setShowClearConfirmation] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
     const sidebarRef = useRef<TimeEntriesSidebarRef>(null);
 
+    // Services - Dependency Injection
+    const timeEntryService = useRef<TimeEntryServiceInterface>(createTimeEntryService());
+    const notificationService = useRef<NotificationServiceInterface>(createNotificationService());
+    const keyboardService = useRef<KeyboardServiceInterface>(createKeyboardService());
+
     const handleTimeEntrySubmit = async (data: TimeEntryData) => {
         setIsLoading(true);
         setMessage(null);
 
-        try {
-            const response = await fetch('/api/time-entries', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data),
-            });
+        const result = await timeEntryService.current.createTimeEntry(data);
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to create time entry');
-            }
-
-            const result = await response.json();
-            setMessage({ type: 'success', text: 'Time entry added successfully!' });
+        if (result.success) {
+            setMessage(notificationService.current.createMessage('success', 'Time entry added successfully!'));
             setRefreshTrigger((prev) => prev + 1); // Trigger sidebar refresh
-            console.log('Time entry created:', result);
-        } catch (error) {
-            console.error('Error creating time entry:', error);
-            setMessage({
-                type: 'error',
-                text: error instanceof Error ? error.message : 'Failed to create time entry',
-            });
-        } finally {
-            setIsLoading(false);
+            console.log('Time entry created:', result.data);
+        } else {
+            setMessage(notificationService.current.createMessage('error', result.error || 'Failed to create time entry'));
         }
+
+        setIsLoading(false);
     };
 
     const handleClearEntries = async () => {
         setIsClearing(true);
         setMessage(null);
 
-        try {
-            const response = await fetch('/api/time-entries', {
-                method: 'DELETE',
-            });
+        const result = await timeEntryService.current.clearAllEntries();
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to clear entries');
-            }
-
-            const result = await response.json();
-            setMessage({ 
-                type: 'success', 
-                text: `Successfully cleared ${result.count} time entries` 
-            });
+        if (result.success && result.data) {
+            setMessage(notificationService.current.createMessage(
+                'success', 
+                `Successfully cleared ${result.data.count} time entries`
+            ));
             setRefreshTrigger((prev) => prev + 1); // Trigger sidebar refresh
             setShowClearConfirmation(false);
-        } catch (error) {
-            console.error('Error clearing entries:', error);
-            setMessage({
-                type: 'error',
-                text: error instanceof Error ? error.message : 'Failed to clear entries',
-            });
-        } finally {
-            setIsClearing(false);
+        } else {
+            setMessage(notificationService.current.createMessage('error', result.error || 'Failed to clear entries'));
         }
+
+        setIsClearing(false);
     };
 
     // Keyboard shortcut for focusing sidebar
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Focus sidebar with Ctrl+Shift+M
-            if (e.key.toLowerCase() === 'm' && e.ctrlKey && e.shiftKey) {
-                e.preventDefault();
+        const cleanup = keyboardService.current.registerShortcut({
+            key: 'm',
+            ctrlKey: true,
+            shiftKey: true,
+            callback: () => {
                 sidebarRef.current?.focus();
             }
-        };
+        });
 
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
+        return cleanup;
     }, []);
 
     return (
