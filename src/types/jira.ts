@@ -6,6 +6,30 @@ export interface JiraTask {
   status?: string
   assignee?: string
   billingPackage?: string // customfield_10064
+  timeTracking?: JiraTimeTracking
+}
+
+export interface JiraTimeTracking {
+  originalEstimate?: string
+  remainingEstimate?: string
+  timeSpent?: string
+  originalEstimateSeconds?: number
+  remainingEstimateSeconds?: number
+  timeSpentSeconds?: number
+}
+
+export interface JiraWorklog {
+  id: string
+  issueId: string
+  author: {
+    displayName: string
+    emailAddress?: string
+  }
+  created: string
+  started: string
+  timeSpent: string
+  timeSpentSeconds: number
+  comment?: string
 }
 
 export interface JiraSearchResponse {
@@ -26,7 +50,8 @@ export interface JiraIssue {
       displayName: string
       emailAddress: string
     }
-    customfield_10064?: string // billing package
+    customfield_10064?: any // billing package - can be string or object
+    timetracking?: JiraTimeTracking
   }
 }
 

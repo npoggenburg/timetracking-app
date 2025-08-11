@@ -1,4 +1,4 @@
-import { JiraTask, JiraSearchResponse, JiraIssue } from '@/types/jira'
+import { JiraTask, JiraSearchResponse, JiraIssue, JiraWorklog } from '@/types/jira'
 
 export class JiraService {
   private baseUrl: string
@@ -32,7 +32,7 @@ export class JiraService {
     try {
       // Build JQL query - search within MFLP project for the query
       const jql = encodeURIComponent(`project IN (TN,CON,MFLP) AND (key="${query.toUpperCase()}" OR summary~"${query}" OR key~"${query.toUpperCase()}")`)
-      const url = `${this.baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=id,key,summary,description,customfield_10064`
+      const url = `${this.baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=id,key,summary,description,customfield_10064,timetracking`
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -62,7 +62,7 @@ export class JiraService {
    */
   async getTaskByKey(key: string): Promise<JiraTask | null> {
     try {
-      const url = `${this.baseUrl}/rest/api/3/issue/${key}?fields=id,key,summary,description,customfield_10064`
+      const url = `${this.baseUrl}/rest/api/3/issue/${key}?fields=id,key,summary,description,customfield_10064,timetracking`
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -101,6 +101,16 @@ export class JiraService {
       description = JiraService.extractTextFromRichContent(description)
     }
 
+    // Handle billing package - it might be a string or an object with a value property
+    let billingPackage = null
+    if (issue.fields.customfield_10064) {
+      if (typeof issue.fields.customfield_10064 === 'string') {
+        billingPackage = issue.fields.customfield_10064
+      } else if (issue.fields.customfield_10064.value) {
+        billingPackage = issue.fields.customfield_10064.value
+      }
+    }
+
     return {
       id: issue.id,
       key: issue.key,
@@ -108,7 +118,8 @@ export class JiraService {
       description: description,
       status: issue.fields.status?.name,
       assignee: issue.fields.assignee?.displayName,
-      billingPackage: issue.fields.customfield_10064?.value || null
+      billingPackage: billingPackage,
+      timeTracking: issue.fields.timetracking
     }
   }
 
@@ -129,6 +140,100 @@ export class JiraService {
       }
     })
     return text
+  }
+
+  /**
+   * Get worklogs for a specific JIRA issue
+   * @param issueKey - JIRA issue key (e.g., "PROJ-123")
+   * @returns Promise<JiraWorklog[]>
+   */
+  async getWorklogsForIssue(issueKey: string): Promise<JiraWorklog[]> {
+    try {
+      const url = `${this.baseUrl}/rest/api/3/issue/${issueKey}/worklog`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': this.getAuthHeader(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        console.error('JIRA API Error fetching worklogs:', response.status, response.statusText)
+        return []
+      }
+
+      const data = await response.json()
+      const worklogs = data.worklogs || []
+      
+      // Process worklogs to extract comment text from rich content
+      return worklogs.map((worklog: any) => ({
+        ...worklog,
+        comment: worklog.comment ? JiraService.extractTextFromRichContent(worklog.comment) : undefined
+      }))
+    } catch (error) {
+      console.error('Error fetching JIRA worklogs:', error)
+      return []
+    }
+  }
+
+  /**
+   * Get all worklogs for a specific date across all issues
+   * This searches for issues with worklogs and then fetches worklogs for each
+   * @param date - Date string in YYYY-MM-DD format
+   * @returns Promise<{issueKey: string, worklog: JiraWorklog}[]>
+   */
+  async getWorklogsForDate(date: string): Promise<{issueKey: string, summary: string, worklog: JiraWorklog}[]> {
+    try {
+      // JQL to find issues with work logged on the specific date
+      const jql = encodeURIComponent(`worklogDate = ${date} AND worklogAuthor = currentUser()`)
+      const searchUrl = `${this.baseUrl}/rest/api/3/search?jql=${jql}&fields=key,summary`
+      
+      const searchResponse = await fetch(searchUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': this.getAuthHeader(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!searchResponse.ok) {
+        console.error('JIRA API Error searching for issues with worklogs:', searchResponse.status)
+        return []
+      }
+
+      const searchData = await searchResponse.json()
+      const results: {issueKey: string, summary: string, worklog: JiraWorklog}[] = []
+
+      // For each issue, fetch its worklogs and filter for the specific date
+      for (const issue of searchData.issues) {
+        const worklogs = await this.getWorklogsForIssue(issue.key)
+        const dateWorklogs = worklogs.filter((worklog: any) => {
+          const worklogDate = new Date(worklog.started).toISOString().split('T')[0]
+          return worklogDate === date
+        })
+        
+        for (const worklog of dateWorklogs) {
+          // Ensure comment is a string, not an object
+          const processedWorklog = {
+            ...worklog,
+            comment: typeof worklog.comment === 'string' ? worklog.comment : undefined
+          }
+          results.push({
+            issueKey: issue.key,
+            summary: issue.fields.summary,
+            worklog: processedWorklog
+          })
+        }
+      }
+
+      return results
+    } catch (error) {
+      console.error('Error fetching worklogs for date:', error)
+      return []
+    }
   }
 
   /**
