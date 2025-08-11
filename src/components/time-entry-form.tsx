@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -130,23 +131,18 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
     // Note: Category focus is handled by onCategoriesLoaded callback
   }, [entryType])
 
-  // Keyboard shortcut for tab switching (Ctrl+M or Cmd+M, but not with Shift)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Toggle tabs with Ctrl+M (Windows/Linux) or Cmd+M (Mac), but not when Shift is held
-      if (e.key.toLowerCase() === 'm' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        e.preventDefault()
-        setEntryType(prev => prev === 'jira' ? 'category' : 'jira')
-        if (entryType === 'jira') {
-          setSelectedJiraTask(null)
-        } else {
-          setSelectedCategory(null)
-        }
-      }
+  // Keyboard shortcut for tab switching (Alt+M for cross-platform compatibility)
+  // enableOnFormTags allows the hotkey to work even when inputs are focused
+  useHotkeys('alt+m', (e) => {
+    e.preventDefault()
+    setEntryType(prev => prev === 'jira' ? 'category' : 'jira')
+    if (entryType === 'jira') {
+      setSelectedJiraTask(null)
+    } else {
+      setSelectedCategory(null)
     }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, {
+    enableOnFormTags: ['INPUT', 'TEXTAREA', 'SELECT'],
   }, [entryType])
 
   const handleCategoriesLoaded = () => {
@@ -213,7 +209,7 @@ export function TimeEntryForm({ onSubmit, isLoading = false }: TimeEntryFormProp
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">Time Entry Type</Label>
           <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-            Press Ctrl+M to switch
+            Press Alt+M to switch
           </span>
         </div>
         <div className="flex gap-2">
